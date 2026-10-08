@@ -1,42 +1,17 @@
 import * as Sentry from "@sentry/nextjs";
-import type { BaseTransportOptions, Transport, TransportMakeRequestResponse, TransportRequest } from "@sentry/core";
 
 /**
- * Fetch-based transport.
+ * Server-side Sentry initialization (Node runtime), default transport.
  *
- * On Webflow Cloud the app runs inside a Cloudflare Worker (workerd) with the
- * `nodejs_compat` flag, via @opennextjs/cloudflare. The Sentry Node SDK's
- * default transport sends events with Node's `https.request`, which workerd
- * only provides at compatibility_date >= 2025-08-16 — on older dates events
- * are dropped silently. `fetch` works on every compatibility date, so this
- * transport makes server-side Sentry work regardless of the worker's date.
- */
-function makeFetchTransport(options: BaseTransportOptions): Transport {
-  return Sentry.createTransport(options, async (request: TransportRequest): Promise<TransportMakeRequestResponse> => {
-    // request.body is string | Uint8Array; workers-types' BodyInit doesn't
-    // include the generic Uint8Array type, hence the cast.
-    const response = await fetch(options.url, {
-      method: "POST",
-      body: request.body as BodyInit,
-      headers: options.headers,
-    });
-    return {
-      statusCode: response.status,
-      headers: {
-        "x-sentry-rate-limits": response.headers.get("X-Sentry-Rate-Limits"),
-        "retry-after": response.headers.get("Retry-After"),
-      },
-    };
-  });
-}
-
-/**
- * Server-side Sentry initialization (Node runtime).
+ * TEST FIXTURE (CLOUD-168): this branch deliberately omits the fetch-based
+ * transport override that `feat/sentry-integration-example` uses. The default
+ * Node transport sends events with `https.request`, which workerd only
+ * provides at compatibility_date >= 2025-08-16. On an older date server-side
+ * events are dropped silently (build, deploy and requests all succeed), so
+ * this app is a reproduction of the bug and a check of the platform fix.
  */
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-
-  transport: makeFetchTransport,
 
   // Demo settings: capture everything. Lower these in a real app.
   tracesSampleRate: 1.0,
